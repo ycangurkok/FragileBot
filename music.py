@@ -38,8 +38,9 @@ class Music(commands.Cog):
 
     @commands.command(name='disconnect',aliases=['leave','dc','l'])
     async def dc(self, ctx):
-        await self.vc.disconnect()
         self.song_queue = []
+        self.vc.stop()
+        await self.vc.disconnect()
         self.vc = None
 
     def getCurrentSong(self, src):
@@ -51,10 +52,13 @@ class Music(commands.Cog):
     @commands.command(name='skip',aliases=['s'])
     async def skip(self, ctx):
         if self.vc:
-            # noinspection PyProtectedMember
-            sauce = self.vc.source._process.args[8]
-            await ctx.send(f"Skipped {self.getCurrentSong(sauce)['title']}")
-            self.vc.stop()
+            try:
+                # noinspection PyProtectedMember
+                sauce = self.vc.source._process.args[8]
+                await ctx.send(f"Skipped {self.getCurrentSong(sauce)['title']}")
+                self.vc.stop()
+            except Exception:
+                await ctx.send("No songs in queue")
         else:
             await ctx.send("Not connected to a voice client")
 
@@ -109,12 +113,18 @@ class Music(commands.Cog):
 
     @commands.command(name="queue",aliases=['q'])
     async def queue(self, ctx):
-        if not self.song_queue:
+        try:
+            # noinspection PyProtectedMember
+            current_song = self.getCurrentSong(self.vc.source._process.args[8])
+            new_queue = self.song_queue[self.song_queue.index(current_song):len(self.song_queue)]
+        except Exception:
             await ctx.send("No songs in queue")
             return
         retval = ""
-        for song in self.song_queue:
-            retval = retval + song['title'] + "\n"
+        i = 0
+        for song in new_queue:
+            i += 1
+            retval = retval + f"**{i}.** {song['title']} \n"
         await ctx.send(retval)
 
     @commands.command(name="pause")
