@@ -4,9 +4,10 @@ from spotipy.oauth2 import SpotifyClientCredentials
 from discord.ext import commands
 from yt_dlp import YoutubeDL
 
-
 oauth = SpotifyClientCredentials(client_id="***REMOVED***",
                                  client_secret="394780edcaa34390801c3b1c3dda542f")
+
+
 class Music(commands.Cog):
 
     def __init__(self, bot):
@@ -29,11 +30,11 @@ class Music(commands.Cog):
 
         return {'source': formats[0]['url'], 'title': info['title']}
 
-    @commands.command(name='hello',aliases=['hi'])
+    @commands.command(name='hello', aliases=['hi'])
     async def sendHello(self, ctx):
         await ctx.send(f"Hello {ctx.author}")
 
-    @commands.command(name='join',aliases=['j'])
+    @commands.command(name='join', aliases=['j'])
     async def join(self, ctx):
         if ctx.author.voice is None:
             await ctx.send("Please connect to a voice channel")
@@ -42,7 +43,7 @@ class Music(commands.Cog):
         else:
             await ctx.send(f"Already in channel **{self.vc.channel}**")
 
-    @commands.command(name='disconnect',aliases=['leave','dc','l'])
+    @commands.command(name='disconnect', aliases=['leave', 'dc'])
     async def dc(self, ctx):
         self.song_queue = []
         self.vc.stop()
@@ -55,7 +56,7 @@ class Music(commands.Cog):
                 return song
         return None
 
-    @commands.command(name='skip',aliases=['s'])
+    @commands.command(name='skip', aliases=['s'])
     async def skip(self, ctx):
         if self.vc:
             try:
@@ -71,11 +72,21 @@ class Music(commands.Cog):
     def playNext(self, ctx, song):
         if self.vc.is_playing():
             return
-        if self.song_queue.index(song)+1 == len(self.song_queue):
-            return
-        self.vc.play(discord.FFmpegPCMAudio(self.song_queue[self.song_queue.index(song)+1]['source'],
-                                            **self.FFMPEG_OPTIONS),
-                     after=lambda e: self.playNext(ctx,self.song_queue[self.song_queue.index(song)+1]))
+        if self.looping == 0:
+            if self.song_queue.index(song) + 1 == len(self.song_queue):
+                return
+            self.vc.play(discord.FFmpegPCMAudio(self.song_queue[self.song_queue.index(song) + 1]['source'],
+                                                **self.FFMPEG_OPTIONS),
+                         after=lambda e: self.playNext(ctx, self.song_queue[self.song_queue.index(song) + 1]))
+        elif self.looping == 1:
+            self.vc.play(discord.FFmpegPCMAudio(self.song_queue[self.song_queue.index(song)]['source'],
+                                                **self.FFMPEG_OPTIONS),
+                         after=lambda e: self.playNext(ctx, self.song_queue[self.song_queue.index(song)]))
+        else:
+            if self.song_queue.index(song) + 1 == len(self.song_queue):
+                self.vc.play(discord.FFmpegPCMAudio(self.song_queue[0]['source'],**self.FFMPEG_OPTIONS),after=lambda e: self.playNext(ctx,self.song_queue[0]))
+            else:
+                self.vc.play(discord.FFmpegPCMAudio(self.song_queue[self.song_queue.index(song) + 1]['source'],**self.FFMPEG_OPTIONS),after=lambda e: self.playNext(ctx, self.song_queue[self.song_queue.index(song) + 1]))
 
     async def playSong(self, ctx, song):
         if self.vc.is_playing():
@@ -84,9 +95,9 @@ class Music(commands.Cog):
             url = self.song_queue[self.song_queue.index(song)]['source']
         except Exception:
             return
-        self.vc.play(discord.FFmpegPCMAudio(url, **self.FFMPEG_OPTIONS), after=lambda e: self.playNext(ctx,song))
+        self.vc.play(discord.FFmpegPCMAudio(url, **self.FFMPEG_OPTIONS), after=lambda e: self.playNext(ctx, song))
 
-    @commands.command(name='play',aliases=['p'])
+    @commands.command(name='play', aliases=['p'])
     async def play(self, ctx, *args):
         query = " ".join(args)
         if ctx.author.voice is None:
@@ -123,7 +134,7 @@ class Music(commands.Cog):
         await ctx.send(f"Playing **{song['title']}**")
         await self.playSong(ctx, song)
 
-    @commands.command(name="clear",aliases=['stop','c'])
+    @commands.command(name="clear", aliases=['stop', 'c'])
     async def clear(self, ctx):
         # noinspection PyProtectedMember
         self.song_queue = [x for x in self.song_queue if x == self.getCurrentSong(self.vc.source._process.args[8])]
@@ -131,6 +142,19 @@ class Music(commands.Cog):
 
     @commands.command(name="queue",aliases=['q'])
     async def queue(self, ctx):
+        retval = ""
+        i = 0
+        for song in self.song_queue:
+            i += 1
+            # noinspection PyProtectedMember
+            if song == self.getCurrentSong(self.vc.source._process.args[8]):
+                retval = retval + f"**{i}.** {song['title']} **[PLAYING]** \n"
+                continue
+            retval = retval + f"**{i}.** {song['title']} \n"
+        await ctx.send(retval)
+
+    @commands.command(name="queueRemaining", aliases=['qr'])
+    async def queueRemaining(self, ctx):
         try:
             # noinspection PyProtectedMember
             current_song = self.getCurrentSong(self.vc.source._process.args[8])
@@ -152,9 +176,21 @@ class Music(commands.Cog):
         else:
             await ctx.send("No song to pause")
 
-    @commands.command(name="resume",aliases=['r'])
+    @commands.command(name="resume", aliases=['r'])
     async def resume(self, ctx):
         if self.vc.is_paused():
             self.vc.resume()
         else:
             await ctx.send("No song to resume")
+
+    @commands.command(name="loop", aliases=['l'])
+    async def loop(self, ctx):
+        if self.looping == 0:
+            self.looping = 1
+            await ctx.send("Looping the song")
+        elif self.looping == 1:
+            self.looping = 2
+            await ctx.send("Looping the queue")
+        else:
+            self.looping = 0
+            await ctx.send("Looping disabled")
