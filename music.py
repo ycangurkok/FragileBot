@@ -111,6 +111,12 @@ class Music(commands.Cog):
         await ctx.send(f"Playing **{song['title']}**")
         await self.playSong(ctx, song)
 
+    @commands.command(name="clear",aliases=['stop','c'])
+    async def clear(self, ctx):
+        # noinspection PyProtectedMember
+        self.song_queue = [x for x in self.song_queue if x == self.getCurrentSong(self.vc.source._process.args[8])]
+        await ctx.send("Queue cleared")
+
     @commands.command(name="queue",aliases=['q'])
     async def queue(self, ctx):
         try:
