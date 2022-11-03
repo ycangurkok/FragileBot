@@ -1,8 +1,12 @@
 import discord
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
 from discord.ext import commands
 from yt_dlp import YoutubeDL
 
 
+oauth = SpotifyClientCredentials(client_id="21346ead57474b6d81f8b3bb7c77eaa2",
+                                 client_secret="394780edcaa34390801c3b1c3dda542f")
 class Music(commands.Cog):
 
     def __init__(self, bot):
@@ -12,6 +16,8 @@ class Music(commands.Cog):
                                'options': '-vn'}
         self.vc = None
         self.song_queue = []
+        self.spotify = spotipy.Spotify(client_credentials_manager=oauth)
+        self.looping = 0
 
     def search_yt(self, item):
         with YoutubeDL(self.YDL_OPTIONS) as ydl:
@@ -90,6 +96,9 @@ class Music(commands.Cog):
             if query == "":
                 self.vc.resume()
                 return
+            if "open.spotify" in query:
+                result = self.spotify.track(query)
+                query = result['artists'][0]['name'] + " " + result['name']
             song = self.search_yt(query)
             self.song_queue.append(song)
             await ctx.send(f"**{song['title']}** added to the queue")
@@ -101,6 +110,9 @@ class Music(commands.Cog):
             await ctx.send("Please search a valid song")
             return
 
+        if "open.spotify" in query:
+            result = self.spotify.track(query)
+            query = result['artists'][0]['name'] + " " + result['name']
         song = self.search_yt(query)
         self.song_queue.append(song)
 
