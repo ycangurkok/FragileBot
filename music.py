@@ -1,8 +1,10 @@
 import discord
 import spotipy
+import random
 from spotipy.oauth2 import SpotifyClientCredentials
 from discord.ext import commands
 from yt_dlp import YoutubeDL
+from contextlib import suppress
 
 oauth = SpotifyClientCredentials(client_id="21346ead57474b6d81f8b3bb7c77eaa2",
                                  client_secret="394780edcaa34390801c3b1c3dda542f")
@@ -45,10 +47,20 @@ class Music(commands.Cog):
 
     @commands.command(name='disconnect', aliases=['leave', 'dc'])
     async def dc(self, ctx):
-        self.song_queue = []
-        self.vc.stop()
-        await self.vc.disconnect()
-        self.vc = None
+        with suppress(Exception):
+            self.song_queue = []
+            self.vc.stop()
+            await self.vc.disconnect()
+            self.vc = None
+
+    @commands.command(name='remove', aliases=['r'])
+    async def remove(self, ctx, *args):
+        try:
+            query = int(" ".join(args))
+            song = self.song_queue.pop(query - 1)
+            await ctx.send(f"Removed song **{song['title']}**")
+        except Exception:
+            await ctx.send("Please enter a valid index number")
 
     def getCurrentSong(self, src):
         for song in self.song_queue:
@@ -84,9 +96,12 @@ class Music(commands.Cog):
                          after=lambda e: self.playNext(ctx, self.song_queue[self.song_queue.index(song)]))
         else:
             if self.song_queue.index(song) + 1 == len(self.song_queue):
-                self.vc.play(discord.FFmpegPCMAudio(self.song_queue[0]['source'],**self.FFMPEG_OPTIONS),after=lambda e: self.playNext(ctx,self.song_queue[0]))
+                self.vc.play(discord.FFmpegPCMAudio(self.song_queue[0]['source'], **self.FFMPEG_OPTIONS),
+                             after=lambda e: self.playNext(ctx, self.song_queue[0]))
             else:
-                self.vc.play(discord.FFmpegPCMAudio(self.song_queue[self.song_queue.index(song) + 1]['source'],**self.FFMPEG_OPTIONS),after=lambda e: self.playNext(ctx, self.song_queue[self.song_queue.index(song) + 1]))
+                self.vc.play(discord.FFmpegPCMAudio(self.song_queue[self.song_queue.index(song) + 1]['source'],
+                                                    **self.FFMPEG_OPTIONS),
+                             after=lambda e: self.playNext(ctx, self.song_queue[self.song_queue.index(song) + 1]))
 
     async def playSong(self, ctx, song):
         if self.vc.is_playing():
@@ -134,13 +149,13 @@ class Music(commands.Cog):
         await ctx.send(f"Playing **{song['title']}**")
         await self.playSong(ctx, song)
 
-    @commands.command(name="clear", aliases=['stop', 'c'])
+    @commands.command(name="clear", aliases=['c'])
     async def clear(self, ctx):
         # noinspection PyProtectedMember
         self.song_queue = [x for x in self.song_queue if x == self.getCurrentSong(self.vc.source._process.args[8])]
         await ctx.send("Queue cleared")
 
-    @commands.command(name="queue",aliases=['q'])
+    @commands.command(name="queue", aliases=['q'])
     async def queue(self, ctx):
         retval = ""
         i = 0
@@ -169,21 +184,21 @@ class Music(commands.Cog):
             retval = retval + f"**{i}.** {song['title']} \n"
         await ctx.send(retval)
 
-    @commands.command(name="pause")
+    @commands.command(name="pause", aliases=["stop"])
     async def pause(self, ctx):
         if self.vc.is_playing():
             self.vc.pause()
         else:
             await ctx.send("No song to pause")
 
-    @commands.command(name="resume", aliases=['r'])
+    @commands.command(name="resume")
     async def resume(self, ctx):
         if self.vc.is_paused():
             self.vc.resume()
         else:
             await ctx.send("No song to resume")
 
-    @commands.command(name="loop", aliases=['l'])
+    @commands.command(name="loop", aliases=['l','repeat'])
     async def loop(self, ctx):
         if self.looping == 0:
             self.looping = 1
@@ -194,3 +209,15 @@ class Music(commands.Cog):
         else:
             self.looping = 0
             await ctx.send("Looping disabled")
+
+    @commands.command(name="shuffle")
+    async def shuffle(self, ctx):
+        # noinspection PyProtectedMember
+        shuffle_q = self.song_queue[self.song_queue.index(self.getCurrentSong(self.vc.source._process.args[8])) + 1:]
+        random.shuffle(shuffle_q)
+        i = 1
+        for song in shuffle_q:
+            # noinspection PyProtectedMember
+            self.song_queue[self.song_queue.index(self.getCurrentSong(self.vc.source._process.args[8])) + i] = song
+            i += 1
+        await ctx.send("Queue shuffled")
