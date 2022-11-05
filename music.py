@@ -6,6 +6,7 @@ from discord.ext import commands
 from yt_dlp import YoutubeDL
 from contextlib import suppress
 from datetime import timedelta
+import azapi
 
 oauth = SpotifyClientCredentials(client_id="21346ead57474b6d81f8b3bb7c77eaa2",
                                  client_secret="394780edcaa34390801c3b1c3dda542f")
@@ -22,6 +23,7 @@ class Music(commands.Cog):
         self.song_queue = []
         self.spotify = spotipy.Spotify(client_credentials_manager=oauth)
         self.looping = 0
+        self.lyrics_api = azapi.AZlyrics('google',0.5)
 
     def search_yt(self, item):
         with YoutubeDL(self.YDL_OPTIONS) as ydl:
@@ -228,6 +230,33 @@ class Music(commands.Cog):
         else:
             self.looping = 0
             await ctx.send("Looping disabled")
+
+    @commands.command(name="lyrics")
+    async def lyrics(self, ctx):
+        try:
+            # noinspection PyProtectedMember
+            current_song_title = self.getCurrentSong(self.vc.source._process.args[8])['title']
+        except Exception:
+            await ctx.send("No song currently playing")
+            return
+
+        self.lyrics_api.title = current_song_title
+        self.lyrics_api.getLyrics()
+        lyrics = self.lyrics_api.lyrics
+        try:
+            if len(lyrics) > 2000:
+                if len(lyrics) > 4000:
+                    await ctx.send("Lyrics too long for Discord")
+                    return
+
+                firstpart, secondpart = lyrics[:len(lyrics) // 2], lyrics[len(lyrics) // 2:]
+                await ctx.send(f"""```{firstpart}```""")
+                await ctx.send(f"""```{secondpart}```""")
+                return
+            await ctx.send(lyrics)
+        except Exception:
+            await ctx.send("No lyrics found")
+            return
 
     @commands.command(name="shuffle")
     async def shuffle(self, ctx):
