@@ -10,7 +10,7 @@ class Help(commands.Cog):
 General commands:
 -help - displays all the available commands
 -join - connects the bot to the author's voice channel
--play <keywords> - finds the song on youtube and plays it in your current channel. Will resume playing the current song if it was paused
+-play <keywords> - finds the song on youtube and plays it in your current channel. Will resume playing the current song
 -queue - displays the current music queue
 -queueRemaining - displays the remaining music queue
 -skip - skips the current song being played
@@ -24,6 +24,7 @@ General commands:
 -leave - Disconnects the bot from the voice channel
 -pause - pauses the current song being played or resumes if already paused
 -resume - resumes playing the current song
+-lyrics - prints the lyrics of the current song using AZLyrics
 ```
 """
 
