@@ -161,6 +161,7 @@ class Music(commands.Cog):
     async def clear(self, ctx):
         # noinspection PyProtectedMember
         self.song_queue = [x for x in self.song_queue if x == self.getCurrentSong(self.vc.source._process.args[8])]
+        self.vc.stop()
         await ctx.send("Queue cleared")
 
     @commands.command(name="queue", aliases=['q'])
@@ -274,3 +275,29 @@ class Music(commands.Cog):
                      after=lambda e: self.playNext(ctx, self.song_queue[idx]))
         await ctx.send(f"Replaying **{self.song_queue[idx]['title']}** "
                        f"[{timedelta(seconds=self.song_queue[idx]['duration'])}]")
+
+    @commands.command(name="seek")
+    async def seek(self, ctx, *args):
+        try:
+            query = int(" ".join(args))
+        except Exception:
+            await ctx.send("Invalid input given")
+            return
+        idx = None
+        try:
+            # noinspection PyProtectedMember
+            idx = self.song_queue.index(self.getCurrentSong(self.vc.source._process.args[8]))
+            if query >= self.song_queue[idx]['duration']:
+                await ctx.send("The seek value cannot exceed the song duration")
+                return
+        except Exception:
+            await ctx.send("No song currently playing/paused")
+            return
+        options = f"-vn -ss {query}"
+        temp_ffmpeg_options = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+                               'options': options}
+        self.vc.stop()
+        self.vc.play(discord.FFmpegPCMAudio(self.song_queue[idx]['source'],
+                                            **temp_ffmpeg_options),
+                     after=lambda e: self.playNext(ctx, self.song_queue[idx]))
+        await ctx.send(f"Playing **{self.song_queue[idx]['title']}** at **{timedelta(seconds=query)}**")
