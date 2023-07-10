@@ -8,8 +8,8 @@ from contextlib import suppress
 from datetime import timedelta
 import azapi
 
-oauth = SpotifyClientCredentials(client_id="21346ead57474b6d81f8b3bb7c77eaa2",
-                                 client_secret="394780edcaa34390801c3b1c3dda542f")
+oauth = SpotifyClientCredentials(client_id="",
+                                 client_secret="")
 
 
 class Music(commands.Cog):
