@@ -24,7 +24,6 @@ General commands:
 -leave - Disconnects the bot from the voice channel
 -pause - pauses the current song being played or resumes if already paused
 -resume - resumes playing the current song
--lyrics - prints the lyrics of the current song using AZLyrics
 ```
 """
 
