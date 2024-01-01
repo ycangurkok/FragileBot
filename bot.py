@@ -15,4 +15,4 @@ async def on_ready():
     await bot.change_presence(activity=discord.Activity(name='music', type=2))
     print(f"Logged in as {bot.user}")
 
-bot.run("")
+bot.run("ODgyMjAyMDg5NDUzOTQwODA3.GdmsfG.-KngjH6-0ctvP6f2m0Rfu5acIsVszuSUVz115I")
