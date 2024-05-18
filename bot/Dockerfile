@@ -2,7 +2,7 @@ FROM python:alpine
 
 WORKDIR /code
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip3 install -r requirements.txt
+    pip3 install discord pynacl yt-dlp spotipy
 
 COPY . .
 
