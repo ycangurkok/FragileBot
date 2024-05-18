@@ -7,8 +7,8 @@ from yt_dlp import YoutubeDL
 from contextlib import suppress
 from datetime import timedelta
 
-oauth = SpotifyClientCredentials(client_id="",
-                                 client_secret="")
+oauth = SpotifyClientCredentials(client_id="***REMOVED***",
+                                 client_secret="***REMOVED***")
 
 
 class Music(commands.Cog):
