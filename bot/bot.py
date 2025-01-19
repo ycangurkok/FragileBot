@@ -24,7 +24,7 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         await ctx.send("Command not found.")
     else:
-        await ctx.send("An error occurred.")
+        await ctx.send(f"An error occurred: {error}")
     print(f"An error occurred: {error}")
 
 if TOKEN:
