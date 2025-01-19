@@ -1,14 +1,18 @@
 import discord
 import spotipy
 import random
+import os
 from spotipy.oauth2 import SpotifyClientCredentials
 from discord.ext import commands
 from yt_dlp import YoutubeDL
 from contextlib import suppress
 from datetime import timedelta
 
-oauth = SpotifyClientCredentials(client_id="***REMOVED***",
-                                 client_secret="***REMOVED***")
+SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
+SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+
+oauth = SpotifyClientCredentials(client_id=SPOTIFY_CLIENT_ID,
+                                 client_secret=SPOTIFY_CLIENT_SECRET)
 
 
 class Music(commands.Cog):
@@ -20,48 +24,72 @@ class Music(commands.Cog):
                                'options': '-vn'}
         self.vc = None
         self.song_queue = []
-        self.spotify = spotipy.Spotify(client_credentials_manager=oauth)
         self.looping = 0
+
+        # Initialize Spotify client with error handling
+        try:
+            self.spotify = spotipy.Spotify(client_credentials_manager=oauth)
+        except Exception as e:
+            print(f"Error initializing Spotify client: {e}")
+            self.spotify = None
 
     def search_yt(self, item):
         with YoutubeDL(self.YDL_OPTIONS) as ydl:
             try:
-                info = ydl.extract_info("ytsearch:%s" % item, download=False)['entries'][0]
-                formats = [x for x in info['formats'] if len(x) > 25]
-            except Exception:
+                info = ydl.extract_info(f"ytsearch:{item}", download=False)['entries'][0]
+                formats = [f for f in info['formats'] if f['ext'] == 'm4a' or f['ext'] == 'webm']
+                if not formats:
+                    return False
+            except Exception as e:
+                print(f"Error searching YouTube: {e}")
                 return False
 
         return {'source': formats[0]['url'], 'title': info['title'], 'duration': info['duration']}
-
-    @commands.command(name='hello', aliases=['hi'])
-    async def sendHello(self, ctx):
-        await ctx.send(f"Hello {ctx.author}")
 
     @commands.command(name='join', aliases=['j'])
     async def join(self, ctx):
         if ctx.author.voice is None:
             await ctx.send("Please connect to a voice channel")
-        elif self.vc is None:
-            self.vc = await ctx.author.voice.channel.connect()
+        elif self.vc is None or not self.vc.is_connected():
+            try:
+                self.vc = await ctx.author.voice.channel.connect()
+                await ctx.send(f"Joined **{ctx.author.voice.channel}**")
+            except Exception as e:
+                await ctx.send(f"Error connecting to voice channel: {e}")
+                print(f"Error connecting to voice channel: {e}")
         else:
             await ctx.send(f"Already in channel **{self.vc.channel}**")
 
     @commands.command(name='disconnect', aliases=['leave', 'dc'])
     async def dc(self, ctx):
-        with suppress(Exception):
-            self.song_queue = []
-            self.vc.stop()
-            await self.vc.disconnect()
-            self.vc = None
+        if self.vc is None or not self.vc.is_connected():
+            await ctx.send("I am not connected to any voice channel.")
+        else:
+            try:
+                self.song_queue = []
+                self.vc.stop()
+                await self.vc.disconnect()
+                self.vc = None
+                await ctx.send("Disconnected from the voice channel.")
+            except Exception as e:
+                await ctx.send(f"Error disconnecting from voice channel: {e}")
+                print(f"Error disconnecting from voice channel: {e}")
 
     @commands.command(name='remove', aliases=['r'])
     async def remove(self, ctx, *args):
         try:
             query = int(" ".join(args))
+            if query < 1 or query > len(self.song_queue):
+                await ctx.send("Please enter a valid index number.")
+                return
+
             song = self.song_queue.pop(query - 1)
-            await ctx.send(f"Removed song **{song['title']}**")
-        except Exception:
-            await ctx.send("Please enter a valid index number")
+            await ctx.send(f"Removed song **{song['title']}** from the queue.")
+        except ValueError:
+            await ctx.send("Please enter a valid index number.")
+        except Exception as e:
+            await ctx.send(f"An error occurred: {e}")
+            print(f"Error removing song: {e}")
 
     def getCurrentSong(self, src):
         for song in self.song_queue:
@@ -71,52 +99,57 @@ class Music(commands.Cog):
 
     @commands.command(name='skip', aliases=['s'])
     async def skip(self, ctx):
-        if self.vc:
+        if self.vc and self.vc.is_playing():
             try:
                 # noinspection PyProtectedMember
                 sauce = self.vc.source._process.args[8]
-                nxt = ""
-                if self.song_queue.index(self.getCurrentSong(sauce)) + 1 == len(self.song_queue):
-                    await ctx.send(f"Skipped **{self.getCurrentSong(sauce)['title']}**. Queue finished.")
+                current_song = self.getCurrentSong(sauce)
+                if current_song is None:
+                    await ctx.send("Current song not found in the queue.")
+                    return
+
+                current_index = self.song_queue.index(current_song)
+                if current_index + 1 == len(self.song_queue):
+                    await ctx.send(f"Skipped **{current_song['title']}**. Queue finished.")
                 else:
-                    await ctx.send(f"Skipped **{self.getCurrentSong(sauce)['title']}**. "
-                                   f"Now playing **"
-                                   f"{self.song_queue[self.song_queue.index(self.getCurrentSong(sauce))+1]['title']}** "
-                                   f"[{timedelta(seconds=self.song_queue[self.song_queue.index(self.getCurrentSong(sauce))+1]['duration'])}]")
+                    next_song = self.song_queue[current_index + 1]
+                    await ctx.send(f"Skipped **{current_song['title']}**. Now playing **{next_song['title']}** "
+                                f"[{timedelta(seconds=next_song['duration'])}]")
+
                 self.vc.stop()
-            except Exception:
-                await ctx.send("No songs in queue")
+            except Exception as e:
+                await ctx.send(f"An error occurred: {e}")
+                print(f"Error skipping song: {e}")
         else:
-            await ctx.send("Not connected to a voice client")
+            await ctx.send("Not connected to a voice client or no song is currently playing.")
 
     def playNext(self, ctx, song):
         if self.vc.is_playing():
             return
+
+        try:
+            current_index = self.song_queue.index(song)
+        except ValueError:
+            return
+
         if self.looping == 0:
-            if self.song_queue.index(song) + 1 == len(self.song_queue):
+            if current_index + 1 == len(self.song_queue):
                 return
-            self.vc.play(discord.FFmpegPCMAudio(self.song_queue[self.song_queue.index(song) + 1]['source'],
-                                                **self.FFMPEG_OPTIONS),
-                         after=lambda e: self.playNext(ctx, self.song_queue[self.song_queue.index(song) + 1]))
+            next_song = self.song_queue[current_index + 1]
         elif self.looping == 1:
-            self.vc.play(discord.FFmpegPCMAudio(self.song_queue[self.song_queue.index(song)]['source'],
-                                                **self.FFMPEG_OPTIONS),
-                         after=lambda e: self.playNext(ctx, self.song_queue[self.song_queue.index(song)]))
+            next_song = song
         else:
-            if self.song_queue.index(song) + 1 == len(self.song_queue):
-                self.vc.play(discord.FFmpegPCMAudio(self.song_queue[0]['source'], **self.FFMPEG_OPTIONS),
-                             after=lambda e: self.playNext(ctx, self.song_queue[0]))
-            else:
-                self.vc.play(discord.FFmpegPCMAudio(self.song_queue[self.song_queue.index(song) + 1]['source'],
-                                                    **self.FFMPEG_OPTIONS),
-                             after=lambda e: self.playNext(ctx, self.song_queue[self.song_queue.index(song) + 1]))
+            next_song = self.song_queue[(current_index + 1) % len(self.song_queue)]
+
+        self.vc.play(discord.FFmpegPCMAudio(next_song['source'], **self.FFMPEG_OPTIONS),
+                    after=lambda e: self.playNext(ctx, next_song))
 
     async def playSong(self, ctx, song):
         if self.vc.is_playing():
             return
         try:
-            url = self.song_queue[self.song_queue.index(song)]['source']
-        except Exception:
+            url = song['source']
+        except KeyError:
             return
         self.vc.play(discord.FFmpegPCMAudio(url, **self.FFMPEG_OPTIONS), after=lambda e: self.playNext(ctx, song))
 
@@ -126,179 +159,191 @@ class Music(commands.Cog):
         if ctx.author.voice is None:
             await ctx.send("Please connect to a voice channel")
             return
-        elif self.vc is not None and self.vc.is_paused():
-            if query == "":
-                self.vc.resume()
-                return
-            if "open.spotify" in query:
-                result = self.spotify.track(query)
-                query = result['artists'][0]['name'] + " " + result['name']
-            song = self.search_yt(query)
-            self.song_queue.append(song)
-            await ctx.send(f"Queued **{song['title']}** [{timedelta(seconds=song['duration'])}]")
-            return
-        elif self.vc is None:
+
+        if self.vc is None:
             self.vc = await ctx.author.voice.channel.connect()
 
-        if query == "":
-            await ctx.send("Please search a valid song")
+        if self.vc.is_paused() and query == "":
+            self.vc.resume()
+            await ctx.send("Resumed the music.")
             return
 
         if "open.spotify" in query:
-            result = self.spotify.track(query)
-            query = result['artists'][0]['name'] + " " + result['name']
-        song = self.search_yt(query)
-        self.song_queue.append(song)
+            try:
+                result = self.spotify.track(query)
+                query = result['artists'][0]['name'] + " " + result['name']
+            except Exception as e:
+                await ctx.send(f"Error fetching Spotify track: {e}")
+                print(f"Error fetching Spotify track: {e}")
+                return
 
-        if self.vc.is_playing():
-            await ctx.send(f"Queued **{song['title']}** [{timedelta(seconds=song['duration'])}]")
+        song = self.search_yt(query)
+        if not song:
+            await ctx.send("Could not find the song on YouTube.")
             return
 
-        await ctx.send(f"Playing **{song['title']}** [{timedelta(seconds=song['duration'])}]")
-        await self.playSong(ctx, song)
+        self.song_queue.append(song)
+        await ctx.send(f"Queued **{song['title']}** [{timedelta(seconds=song['duration'])}]")
+
+        if not self.vc.is_playing():
+            await self.playSong(ctx, song)
 
     @commands.command(name="clear", aliases=['c'])
     async def clear(self, ctx):
         with suppress(Exception):
-            # noinspection PyProtectedMember
-            self.song_queue = [x for x in self.song_queue if x == self.getCurrentSong(self.vc.source._process.args[8])]
+            if self.vc and self.vc.is_playing():
+                # noinspection PyProtectedMember
+                current_song = self.getCurrentSong(self.vc.source._process.args[8])
+                self.song_queue = [current_song] if current_song else []
+            else:
+                self.song_queue = []
             self.vc.stop()
             await ctx.send("Queue cleared")
 
     @commands.command(name="queue", aliases=['q'])
     async def queue(self, ctx):
         retval = ""
-        i = 0
         duration = 0
         try:
-            for song in self.song_queue:
-                i += 1
-                duration += song['duration']
+            current_song = None
+            if self.vc and self.vc.is_playing():
                 # noinspection PyProtectedMember
-                if song == self.getCurrentSong(self.vc.source._process.args[8]):
-                    retval = retval + f"**{i}.** {song['title']} [{timedelta(seconds=song['duration'])}] " \
-                                      f"**[PLAYING]** \n"
-                    continue
-                retval = retval + f"**{i}.** {song['title']} [{timedelta(seconds=song['duration'])}] \n"
+                current_song = self.getCurrentSong(self.vc.source._process.args[8])
+
+            for i, song in enumerate(self.song_queue, start=1):
+                duration += song['duration']
+                if song == current_song:
+                    retval += f"**{i}.** {song['title']} [{timedelta(seconds=song['duration'])}] **[PLAYING]** \n"
+                else:
+                    retval += f"**{i}.** {song['title']} [{timedelta(seconds=song['duration'])}] \n"
+
             retval += f"\nTotal Duration: **{timedelta(seconds=duration)}**"
             await ctx.send(retval)
-        except Exception:
+        except Exception as e:
             await ctx.send("No songs in queue")
+            print(f"Error displaying queue: {e}")
 
     @commands.command(name="queueRemaining", aliases=['qr'])
     async def queueRemaining(self, ctx):
         try:
             # noinspection PyProtectedMember
             current_song = self.getCurrentSong(self.vc.source._process.args[8])
-            new_queue = self.song_queue[self.song_queue.index(current_song):len(self.song_queue)]
+            new_queue = self.song_queue[self.song_queue.index(current_song):] if current_song else []
         except Exception:
             await ctx.send("No songs in queue")
             return
+
         retval = ""
-        i = 0
         duration = 0
-        for song in new_queue:
+        for i, song in enumerate(new_queue, start=1):
             duration += song['duration']
-            i += 1
-            retval = retval + f"**{i}.** {song['title']} [{timedelta(seconds=song['duration'])}]\n"
+            retval += f"**{i}.** {song['title']} [{timedelta(seconds=song['duration'])}]\n"
+
         retval += f"\nRemaining Duration: **{timedelta(seconds=duration)}**"
         await ctx.send(retval)
 
     @commands.command(name="pause", aliases=["stop"])
     async def pause(self, ctx):
-        if self.vc.is_playing():
+        if self.vc and self.vc.is_playing():
             self.vc.pause()
+            await ctx.send("Paused the music.")
         else:
-            await ctx.send("No song to pause")
+            await ctx.send("No song is currently playing.")
 
     @commands.command(name="resume")
     async def resume(self, ctx):
-        if self.vc.is_paused():
+        if self.vc and self.vc.is_paused():
             self.vc.resume()
+            await ctx.send("Resumed the music.")
         else:
-            await ctx.send("No song to resume")
+            await ctx.send("No song is currently paused.")
 
     @commands.command(name="loop", aliases=['l', 'repeat'])
     async def loop(self, ctx):
         if self.looping == 0:
             self.looping = 1
-            await ctx.send("Looping the song")
+            await ctx.send("Looping the current song.")
         elif self.looping == 1:
             self.looping = 2
-            await ctx.send("Looping the queue")
+            await ctx.send("Looping the entire queue.")
         else:
             self.looping = 0
-            await ctx.send("Looping disabled")
+            await ctx.send("Looping disabled.")
 
     @commands.command(name="shuffle")
     async def shuffle(self, ctx):
-        # noinspection PyProtectedMember
-        shuffle_q = self.song_queue[self.song_queue.index(self.getCurrentSong(self.vc.source._process.args[8])) + 1:]
-        random.shuffle(shuffle_q)
-        i = 1
-        for song in shuffle_q:
+        try:
             # noinspection PyProtectedMember
-            self.song_queue[self.song_queue.index(self.getCurrentSong(self.vc.source._process.args[8])) + i] = song
-            i += 1
-        await ctx.send("Queue shuffled")
+            current_song = self.getCurrentSong(self.vc.source._process.args[8])
+            if current_song:
+                current_index = self.song_queue.index(current_song)
+                shuffle_q = self.song_queue[current_index + 1:]
+                random.shuffle(shuffle_q)
+                self.song_queue = self.song_queue[:current_index + 1] + shuffle_q
+                await ctx.send("Queue shuffled")
+            else:
+                await ctx.send("No song currently playing")
+        except Exception as e:
+            await ctx.send(f"An error occurred: {e}")
+            print(f"Error shuffling queue: {e}")
 
     @commands.command(name="previous", aliases=['prev'])
     async def previous(self, ctx):
-        idx = None
         try:
             # noinspection PyProtectedMember
-            idx = self.song_queue.index(self.getCurrentSong(self.vc.source._process.args[8]))
+            current_song = self.getCurrentSong(self.vc.source._process.args[8])
+            idx = self.song_queue.index(current_song)
             if idx == 0:
                 await ctx.send("No previous song found")
                 return
         except Exception:
             await ctx.send("No song currently playing/paused")
             return
+
         self.vc.stop()
         prev_song = self.song_queue[idx - 1]
-        self.vc.play(discord.FFmpegPCMAudio(prev_song['source'],
-                                            **self.FFMPEG_OPTIONS),
-                     after=lambda e: self.playNext(ctx, self.song_queue[idx - 1]))
+        self.vc.play(discord.FFmpegPCMAudio(prev_song['source'], **self.FFMPEG_OPTIONS),
+                    after=lambda e: self.playNext(ctx, prev_song))
         await ctx.send(f"Replaying **{prev_song['title']}** [{timedelta(seconds=prev_song['duration'])}]")
 
     @commands.command(name="rewind")
     async def rewind(self, ctx):
-        idx = None
         try:
             # noinspection PyProtectedMember
-            idx = self.song_queue.index(self.getCurrentSong(self.vc.source._process.args[8]))
+            current_song = self.getCurrentSong(self.vc.source._process.args[8])
+            idx = self.song_queue.index(current_song)
         except Exception:
             await ctx.send("No song currently playing/paused")
             return
+
         self.vc.stop()
-        self.vc.play(discord.FFmpegPCMAudio(self.song_queue[idx]['source'],
-                                            **self.FFMPEG_OPTIONS),
-                     after=lambda e: self.playNext(ctx, self.song_queue[idx]))
-        await ctx.send(f"Replaying **{self.song_queue[idx]['title']}** "
-                       f"[{timedelta(seconds=self.song_queue[idx]['duration'])}]")
+        self.vc.play(discord.FFmpegPCMAudio(self.song_queue[idx]['source'], **self.FFMPEG_OPTIONS),
+                    after=lambda e: self.playNext(ctx, self.song_queue[idx]))
+        await ctx.send(f"Replaying **{self.song_queue[idx]['title']}** [{timedelta(seconds=self.song_queue[idx]['duration'])}]")
 
     @commands.command(name="seek")
     async def seek(self, ctx, *args):
         try:
             query = int(" ".join(args))
-        except Exception:
+        except ValueError:
             await ctx.send("Invalid input given")
             return
-        idx = None
+
         try:
             # noinspection PyProtectedMember
-            idx = self.song_queue.index(self.getCurrentSong(self.vc.source._process.args[8]))
+            current_song = self.getCurrentSong(self.vc.source._process.args[8])
+            idx = self.song_queue.index(current_song)
             if query >= self.song_queue[idx]['duration']:
                 await ctx.send("The seek value cannot exceed the song duration")
                 return
         except Exception:
             await ctx.send("No song currently playing/paused")
             return
+
         options = f"-vn -ss {query}"
         temp_ffmpeg_options = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-                               'options': options}
+                            'options': options}
         self.vc.stop()
-        self.vc.play(discord.FFmpegPCMAudio(self.song_queue[idx]['source'],
-                                            **temp_ffmpeg_options),
-                     after=lambda e: self.playNext(ctx, self.song_queue[idx]))
+        self.vc.play(discord.FFmpegPCMAudio(self.song_queue[idx]['source'], **temp_ffmpeg_options),
+                    after=lambda e: self.playNext(ctx, self.song_queue[idx]))
         await ctx.send(f"Playing **{self.song_queue[idx]['title']}** at **{timedelta(seconds=query)}**")
