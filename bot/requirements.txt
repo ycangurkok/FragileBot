@@ -1,0 +1,5 @@
+audioop-lts
+discord
+pynacl
+yt-dlp
+spotipy

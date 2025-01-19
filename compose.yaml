@@ -3,3 +3,14 @@ services:
     build:
       context: bot/
     restart: always
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+    volumes:
+      - ./bot:/code
+    networks:
+      - bot-network
+
+networks:
+  bot-network:
