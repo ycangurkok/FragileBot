@@ -143,6 +143,7 @@ class Music(commands.Cog):
 
         self.vc.play(discord.FFmpegPCMAudio(next_song['source'], **self.FFMPEG_OPTIONS),
                     after=lambda e: self.playNext(ctx, next_song))
+        self.bot.loop.create_task(self.bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=next_song['title'])))
 
     async def playSong(self, ctx, song):
         if self.vc.is_playing():
@@ -152,6 +153,7 @@ class Music(commands.Cog):
         except KeyError:
             return
         self.vc.play(discord.FFmpegPCMAudio(url, **self.FFMPEG_OPTIONS), after=lambda e: self.playNext(ctx, song))
+        await self.bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=song['title']))
 
     @commands.command(name='play', aliases=['p'])
     async def play(self, ctx, *args):
@@ -305,6 +307,7 @@ class Music(commands.Cog):
         self.vc.play(discord.FFmpegPCMAudio(prev_song['source'], **self.FFMPEG_OPTIONS),
                     after=lambda e: self.playNext(ctx, prev_song))
         await ctx.send(f"Replaying **{prev_song['title']}** [{timedelta(seconds=prev_song['duration'])}]")
+        await self.bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=prev_song['title']))
 
     @commands.command(name="rewind")
     async def rewind(self, ctx):
